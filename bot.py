@@ -10,67 +10,83 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("BOT_TOKEN")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 PORT = int(os.environ.get("PORT", 10000))
 
-stats = {
-    "https://t.me/+8FkXVyTNSB9hZGI0": {"va": "Mamonj", "total_joins": 0},
-    "https://t.me/+zS3jbHJep8I2ZjE0": {"va": "Snazzy", "total_joins": 0},
-    "https://t.me/+OUI_fYmb091lOTk0": {"va": "Rock", "total_joins": 0},
-    "https://t.me/+-7ocRNFOJPEzZDZk": {"va": "JohnAsso", "total_joins": 0},
+# Liens VA — le bot va récupérer les stats directement depuis l'API Telegram
+VA_LINKS = {
+    "https://t.me/+8FkXVyTNSB9hZGI0": "Mamonj",
+    "https://t.me/+zS3jbHJep8I2ZjE0": "Snazzy",
+    "https://t.me/+OUI_fYmb091lOTk0": "Rock",
+    "https://t.me/+-7ocRNFOJPEzZDZk": "JohnAsso",
 }
+
+def get_invite_link_info(link):
+    """Récupère les infos d'un lien d'invitation via l'API"""
+    try:
+        r = requests.post(f"{BASE_URL}/exportChatInviteLink", json={}, timeout=10)
+        logger.info(f"exportChatInviteLink: {r.json()}")
+    except Exception as e:
+        logger.error(f"Erreur: {e}")
+
+def get_all_invite_links(chat_id):
+    """Récupère tous les liens d'invitation du canal"""
+    try:
+        r = requests.post(f"{BASE_URL}/getChatAdministrators", 
+            json={"chat_id": chat_id}, timeout=10)
+        result = r.json()
+        logger.info(f"Admins: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Erreur getChatAdministrators: {e}")
+        return None
+
+def fetch_stats_for_link(link):
+    """Utilise getInviteLink pour récupérer le nombre de joins"""
+    try:
+        # On utilise revokeChatInviteLink pour récupérer les stats sans révoquer
+        r = requests.post(f"{BASE_URL}/getChatInviteLink",
+            json={"invite_link": link},
+            timeout=10)
+        result = r.json()
+        logger.info(f"Stats pour {link}: {result}")
+        if result.get("ok"):
+            return result["result"].get("member_count", 0), result["result"].get("pending_join_request_count", 0)
+    except Exception as e:
+        logger.error(f"Erreur fetch_stats: {e}")
+    return 0, 0
 
 def send_message(chat_id, text):
     try:
-        requests.post(f"{BASE_URL}/sendMessage", json={"chat_id": chat_id, "text": text}, timeout=10)
+        requests.post(f"{BASE_URL}/sendMessage", 
+            json={"chat_id": chat_id, "text": text}, timeout=10)
     except Exception as e:
         logger.error(f"send_message error: {e}")
 
+def get_stats_text():
+    lines = ["📊 Stats par VA (joins totaux depuis création du lien):\n"]
+    for link, va_name in VA_LINKS.items():
+        count, pending = fetch_stats_for_link(link)
+        lines.append(f"👤 {va_name}: {count} membres actifs")
+    return "\n".join(lines)
+
 def handle_update(update):
-    logger.info(f"Update reçu: {json.dumps(update)[:200]}")
-    
+    logger.info(f"Update: {str(update)[:100]}")
     if "message" in update:
-        message = update["message"]
-        chat_id = message["chat"]["id"]
-        text = message.get("text", "")
-
-        if "/start" in text:
-            send_message(chat_id, "👋 Bot tracking Clarisse actif!\n\n/stats — Stats\n/reset — Remettre à 0")
-        elif "/stats" in text:
-            lines = ["📊 Stats depuis activation:\n"]
-            for link, info in stats.items():
-                lines.append(f"👤 {info['va']}: {info['total_joins']} joins")
-            send_message(chat_id, "\n".join(lines))
-        elif "/reset" in text:
-            for link in stats:
-                stats[link]["total_joins"] = 0
-            send_message(chat_id, "✅ Remis à 0.")
-
-    if "chat_member" in update:
-        result = update["chat_member"]
-        old_status = result.get("old_chat_member", {}).get("status", "")
-        new_status = result.get("new_chat_member", {}).get("status", "")
-        logger.info(f"chat_member: {old_status} -> {new_status}")
-
-        if old_status in ["left", "kicked"] and new_status in ["member", "subscriber"]:
-            invite_link = result.get("invite_link", {})
-            if invite_link:
-                link_url = invite_link.get("invite_link", "")
-                if link_url in stats:
-                    stats[link_url]["total_joins"] += 1
-                    va_name = stats[link_url]["va"]
-                    logger.info(f"✅ Join via {va_name} — total: {stats[link_url]['total_joins']}")
+        chat_id = update["message"]["chat"]["id"]
+        text = update["message"].get("text", "")
+        if "/start" in text or "/stats" in text:
+            send_message(chat_id, get_stats_text())
+        elif "/test" in text:
+            send_message(chat_id, "✅ Bot actif et webhook fonctionnel!")
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
-            logger.info(f"POST {self.path} body: {body[:200]}")
-            if self.path == "/webhook":
-                update = json.loads(body)
-                handle_update(update)
+            update = json.loads(body)
+            handle_update(update)
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"OK")
