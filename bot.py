@@ -34,6 +34,7 @@ def save_counts():
     try:
         with open(DATA_FILE, "w") as f:
             json.dump(dict(join_counts), f)
+        logger.info(f"✅ Sauvegarde OK: {dict(join_counts)}")
     except Exception as e:
         logger.error(f"Erreur sauvegarde counts: {e}")
 
@@ -73,11 +74,16 @@ def handle_update(update):
         user = req.get("from", {})
         username = user.get("username", "inconnu")
         logger.info(f"chat_join_request — user: {username}, link: {link_url}")
+        logger.info(f"LIEN EXACT REÇU: '{link_url}'")
+        logger.info(f"LIENS VA_NAMES: {list(VA_NAMES.keys())}")
+        logger.info(f"MATCH: {link_url in VA_NAMES}")
         if link_url in VA_NAMES:
             va_name = VA_NAMES[link_url]
             join_counts[va_name] += 1
             save_counts()
             logger.info(f"✅ Join comptabilisé pour {va_name} — total: {join_counts[va_name]}")
+        else:
+            logger.warning(f"⚠️ Lien non reconnu: '{link_url}'")
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
