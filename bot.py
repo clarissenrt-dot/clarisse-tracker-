@@ -26,13 +26,17 @@ def send_message(chat_id, text):
     requests.post(f"{BASE_URL}/sendMessage", json={"chat_id": chat_id, "text": text})
 
 def get_updates(offset=None):
-    params = {"timeout": 30, "allowed_updates": ["message", "chat_member"]}
+    params = {
+        "timeout": 30,
+        "allowed_updates": ["message", "chat_member", "my_chat_member"]
+    }
     if offset:
         params["offset"] = offset
     try:
         r = requests.get(f"{BASE_URL}/getUpdates", params=params, timeout=35)
         return r.json().get("result", [])
-    except:
+    except Exception as e:
+        logger.error(f"Erreur getUpdates: {e}")
         return []
 
 def handle_message(message):
@@ -74,15 +78,18 @@ def handle_message(message):
             lines.append(f"👤 {info['va']}: {info['total_joins']} entrées totales")
         send_message(chat_id, "\n".join(lines))
 
-def handle_chat_member(update):
-    result = update.get("chat_member", {})
+def handle_chat_member(update_data):
+    result = update_data
     old_status = result.get("old_chat_member", {}).get("status", "")
     new_status = result.get("new_chat_member", {}).get("status", "")
     
-    if old_status in ["left", "kicked"] and new_status == "member":
+    logger.info(f"Chat member update: {old_status} -> {new_status}")
+    
+    if old_status in ["left", "kicked"] and new_status in ["member", "subscriber"]:
         invite_link = result.get("invite_link", {})
         if invite_link:
             link_url = invite_link.get("invite_link", "")
+            logger.info(f"Entrée via lien: {link_url}")
             data = load_data()
             if link_url in data["links"]:
                 data["links"][link_url]["total_joins"] += 1
@@ -92,7 +99,9 @@ def handle_chat_member(update):
                 })
                 save_data(data)
                 va_name = data["links"][link_url]["va"]
-                logger.info(f"Nouveau membre via {va_name}")
+                logger.info(f"✅ Nouveau membre via {va_name} — total: {data['links'][link_url]['total_joins']}")
+        else:
+            logger.info("Entrée sans lien d'invitation détecté")
 
 def main():
     logger.info("Bot démarré...")
@@ -104,7 +113,7 @@ def main():
             if "message" in update:
                 handle_message(update["message"])
             if "chat_member" in update:
-                handle_chat_member(update)
+                handle_chat_member(update["chat_member"])
         time.sleep(1)
 
 if __name__ == "__main__":
