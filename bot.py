@@ -12,19 +12,20 @@ TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 PORT = int(os.environ.get("PORT", 10000))
 
-# Compteurs en mémoire par VA
 VA_NAMES = {
     "https://t.me/+8FkXVyTNSB9hZGI0": "Mamonj",
     "https://t.me/+zS3jbHJep8I2ZjE0": "Snazzy",
     "https://t.me/+OUI_fYmb091lOTk0": "Rock",
     "https://t.me/+-7ocRNFOJPEzZDZk": "JohnAsso",
 }
-join_counts = defaultdict(int)  # { "Mamonj": 3, ... }
+join_counts = defaultdict(int)
 
 def send_message(chat_id, text):
     try:
-        requests.post(f"{BASE_URL}/sendMessage",
+        logger.info(f"Envoi message à chat_id: {chat_id}")
+        r = requests.post(f"{BASE_URL}/sendMessage",
             json={"chat_id": chat_id, "text": text}, timeout=10)
+        logger.info(f"Réponse sendMessage: {r.status_code} — {r.text[:200]}")
     except Exception as e:
         logger.error(f"send_message error: {e}")
 
@@ -37,26 +38,23 @@ def get_stats_text():
     return "\n".join(lines)
 
 def handle_update(update):
-    logger.info(f"Update reçu: {str(update)[:200]}")
+    logger.info(f"Update reçu: {str(update)[:300]}")
 
-    # Commandes /start /stats /test
     if "message" in update:
         chat_id = update["message"]["chat"]["id"]
         text = update["message"].get("text", "")
+        logger.info(f"chat_id: {chat_id}, text: {text}")
         if "/stats" in text or "/start" in text:
             send_message(chat_id, get_stats_text())
         elif "/test" in text:
             send_message(chat_id, "✅ Bot actif!")
 
-    # Événements entrée/sortie canal
     if "chat_member" in update:
         member = update["chat_member"]
         new_status = member.get("new_chat_member", {}).get("status")
         invite_link = member.get("invite_link", {})
         link_url = invite_link.get("invite_link", "") if invite_link else ""
-
         logger.info(f"chat_member event — status: {new_status}, link: {link_url}")
-
         if new_status == "member" and link_url in VA_NAMES:
             va_name = VA_NAMES[link_url]
             join_counts[va_name] += 1
