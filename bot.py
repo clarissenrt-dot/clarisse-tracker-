@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime
 from telegram import Update
-from telegram.ext import Application, ChatMemberHandler, CommandHandler, ContextTypes
+from telegram.ext import Updater, CommandHandler, CallbackContext, ChatMemberHandler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,17 +21,17 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text(
         "👋 Bot tracking Clarisse actif!\n\n"
         "Commandes:\n"
         "/addlink <nom_va> <lien> — Enregistrer un lien VA\n"
         "/stats — Stats de tous les liens\n"
     )
 
-async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def addlink(update: Update, context: CallbackContext):
     if len(context.args) < 2:
-        await update.message.reply_text("Usage: /addlink <nom_va> <lien_telegram>")
+        update.message.reply_text("Usage: /addlink <nom_va> <lien_telegram>")
         return
     va_name = context.args[0]
     link = context.args[1]
@@ -43,19 +43,19 @@ async def addlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "created_at": datetime.now().isoformat()
     }
     save_data(data)
-    await update.message.reply_text(f"✅ Lien enregistré pour {va_name}:\n{link}")
+    update.message.reply_text(f"✅ Lien enregistré pour {va_name}:\n{link}")
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def stats(update: Update, context: CallbackContext):
     data = load_data()
     if not data["links"]:
-        await update.message.reply_text("Aucun lien enregistré.")
+        update.message.reply_text("Aucun lien enregistré.")
         return
     lines = ["📊 Stats globales:\n"]
     for link, info in data["links"].items():
         lines.append(f"👤 {info['va']}: {info['total_joins']} entrées totales")
-    await update.message.reply_text("\n".join(lines))
+    update.message.reply_text("\n".join(lines))
 
-async def track_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def track_member(update: Update, context: CallbackContext):
     result = update.chat_member
     if result is None:
         return
@@ -77,13 +77,15 @@ async def track_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.info(f"Nouveau membre via {va_name}")
 
 def main():
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("addlink", addlink))
-    app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(ChatMemberHandler(track_member, ChatMemberHandler.CHAT_MEMBER))
+    updater = Updater(TOKEN)
+    dp = updater.dispatcher
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("addlink", addlink))
+    dp.add_handler(CommandHandler("stats", stats))
+    dp.add_handler(ChatMemberHandler(track_member, ChatMemberHandler.CHAT_MEMBER))
     logger.info("Bot démarré...")
-    app.run_polling(allowed_updates=["chat_member", "message"])
+    updater.start_polling(allowed_updates=["chat_member", "message"])
+    updater.idle()
 
 if __name__ == "__main__":
     main()
