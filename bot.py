@@ -57,7 +57,7 @@ def get_stats_text():
     return "\n".join(lines)
 
 def handle_update(update):
-    logger.info(f"Update reçu: {str(update)[:300]}")
+    logger.info(f"Update reçu: {str(update)[:1000]}")
 
     if "message" in update:
         chat_id = update["message"]["chat"]["id"]
@@ -70,12 +70,10 @@ def handle_update(update):
     if "chat_join_request" in update:
         req = update["chat_join_request"]
         invite_link = req.get("invite_link", {})
-        link_url = invite_link.get("invite_link", "") if invite_link else ""
+        link_url = invite_link.get("invite_link", "").strip() if invite_link else ""
         user = req.get("from", {})
         username = user.get("username", "inconnu")
-        logger.info(f"chat_join_request — user: {username}, link: {link_url}")
-        logger.info(f"LIEN EXACT REÇU: '{link_url}'")
-        logger.info(f"LIENS VA_NAMES: {list(VA_NAMES.keys())}")
+        logger.info(f"LIEN COMPLET: '{link_url}'")
         logger.info(f"MATCH: {link_url in VA_NAMES}")
         if link_url in VA_NAMES:
             va_name = VA_NAMES[link_url]
