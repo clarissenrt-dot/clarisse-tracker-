@@ -40,6 +40,7 @@ def get_stats_text():
 def handle_update(update):
     logger.info(f"Update reçu: {str(update)[:300]}")
 
+    # Commandes
     if "message" in update:
         chat_id = update["message"]["chat"]["id"]
         text = update["message"].get("text", "")
@@ -49,16 +50,20 @@ def handle_update(update):
         elif "/test" in text:
             send_message(chat_id, "✅ Bot actif!")
 
-    if "chat_member" in update:
-        member = update["chat_member"]
-        new_status = member.get("new_chat_member", {}).get("status")
-        invite_link = member.get("invite_link", {})
+    # Demande de rejoindre via lien (approbation manuelle)
+    if "chat_join_request" in update:
+        req = update["chat_join_request"]
+        invite_link = req.get("invite_link", {})
         link_url = invite_link.get("invite_link", "") if invite_link else ""
-        logger.info(f"chat_member event — status: {new_status}, link: {link_url}")
-        if new_status == "member" and link_url in VA_NAMES:
+        user = req.get("from", {})
+        username = user.get("username", "inconnu")
+
+        logger.info(f"chat_join_request — user: {username}, link: {link_url}")
+
+        if link_url in VA_NAMES:
             va_name = VA_NAMES[link_url]
             join_counts[va_name] += 1
-            logger.info(f"✅ Join comptabilisé pour {va_name} — total: {join_counts[va_name]}")
+            logger.info(f"✅ Join request comptabilisé pour {va_name} — total: {join_counts[va_name]}")
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
