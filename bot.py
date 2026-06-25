@@ -9,6 +9,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("BOT_TOKEN")
+CHANNEL_ID = os.environ.get("CHANNEL_ID")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 DATA_FILE = "tracking_data.json"
 
@@ -25,32 +26,54 @@ def save_data(data):
 def send_message(chat_id, text):
     requests.post(f"{BASE_URL}/sendMessage", json={"chat_id": chat_id, "text": text})
 
+def get_invite_link_stats(invite_link):
+    """Récupère les stats d'un lien d'invitation via l'API Telegram"""
+    try:
+        r = requests.post(f"{BASE_URL}/getInviteLink", json={
+            "chat_id": CHANNEL_ID,
+            "invite_link": invite_link
+        })
+        result = r.json()
+        if result.get("ok"):
+            return result["result"].get("member_count", 0)
+    except Exception as e:
+        logger.error(f"Erreur getInviteLink: {e}")
+    return None
+
+def refresh_all_stats():
+    """Met à jour les stats de tous les liens depuis l'API Telegram"""
+    data = load_data()
+    for link_url, info in data["links"].items():
+        count = get_invite_link_stats(link_url)
+        if count is not None:
+            data["links"][link_url]["total_joins"] = count
+            logger.info(f"{info['va']}: {count} joins")
+    save_data(data)
+    return data
+
 def get_updates(offset=None):
-    params = {
-        "timeout": 30,
-        "allowed_updates": ["message", "chat_member", "my_chat_member"]
-    }
+    params = {"timeout": 30, "allowed_updates": ["message"]}
     if offset:
         params["offset"] = offset
     try:
         r = requests.get(f"{BASE_URL}/getUpdates", params=params, timeout=35)
         return r.json().get("result", [])
-    except Exception as e:
-        logger.error(f"Erreur getUpdates: {e}")
+    except:
         return []
 
 def handle_message(message):
     chat_id = message["chat"]["id"]
     text = message.get("text", "")
-    
+
     if text.startswith("/start"):
         send_message(chat_id,
             "👋 Bot tracking Clarisse actif!\n\n"
             "Commandes:\n"
             "/addlink <nom_va> <lien> — Enregistrer un lien VA\n"
-            "/stats — Stats de tous les liens"
+            "/stats — Stats de tous les liens\n"
+            "/refresh — Mettre à jour les stats depuis Telegram"
         )
-    
+
     elif text.startswith("/addlink"):
         parts = text.split()
         if len(parts) < 3:
@@ -67,7 +90,15 @@ def handle_message(message):
         }
         save_data(data)
         send_message(chat_id, f"✅ Lien enregistré pour {va_name}:\n{link}")
-    
+
+    elif text.startswith("/refresh"):
+        send_message(chat_id, "🔄 Mise à jour des stats...")
+        data = refresh_all_stats()
+        lines = ["📊 Stats mises à jour:\n"]
+        for link, info in data["links"].items():
+            lines.append(f"👤 {info['va']}: {info['total_joins']} joins")
+        send_message(chat_id, "\n".join(lines))
+
     elif text.startswith("/stats"):
         data = load_data()
         if not data["links"]:
@@ -75,45 +106,26 @@ def handle_message(message):
             return
         lines = ["📊 Stats globales:\n"]
         for link, info in data["links"].items():
-            lines.append(f"👤 {info['va']}: {info['total_joins']} entrées totales")
+            lines.append(f"👤 {info['va']}: {info['total_joins']} joins")
         send_message(chat_id, "\n".join(lines))
-
-def handle_chat_member(update_data):
-    result = update_data
-    old_status = result.get("old_chat_member", {}).get("status", "")
-    new_status = result.get("new_chat_member", {}).get("status", "")
-    
-    logger.info(f"Chat member update: {old_status} -> {new_status}")
-    
-    if old_status in ["left", "kicked"] and new_status in ["member", "subscriber"]:
-        invite_link = result.get("invite_link", {})
-        if invite_link:
-            link_url = invite_link.get("invite_link", "")
-            logger.info(f"Entrée via lien: {link_url}")
-            data = load_data()
-            if link_url in data["links"]:
-                data["links"][link_url]["total_joins"] += 1
-                data["links"][link_url]["joins_history"].append({
-                    "user_id": result.get("new_chat_member", {}).get("user", {}).get("id"),
-                    "date": datetime.now().isoformat()
-                })
-                save_data(data)
-                va_name = data["links"][link_url]["va"]
-                logger.info(f"✅ Nouveau membre via {va_name} — total: {data['links'][link_url]['total_joins']}")
-        else:
-            logger.info("Entrée sans lien d'invitation détecté")
 
 def main():
     logger.info("Bot démarré...")
     offset = None
+    refresh_counter = 0
     while True:
         updates = get_updates(offset)
         for update in updates:
             offset = update["update_id"] + 1
             if "message" in update:
                 handle_message(update["message"])
-            if "chat_member" in update:
-                handle_chat_member(update["chat_member"])
+        
+        # Auto-refresh toutes les 10 minutes
+        refresh_counter += 1
+        if refresh_counter >= 600:
+            refresh_all_stats()
+            refresh_counter = 0
+        
         time.sleep(1)
 
 if __name__ == "__main__":
