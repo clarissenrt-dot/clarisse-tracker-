@@ -4,7 +4,6 @@ import logging
 import threading
 import time
 import requests
-from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 logging.basicConfig(level=logging.INFO)
@@ -23,39 +22,30 @@ stats = {
 }
 
 def send_message(chat_id, text):
-    requests.post(f"{BASE_URL}/sendMessage", json={"chat_id": chat_id, "text": text})
-
-def set_webhook():
-    time.sleep(3)  # Attendre que le serveur soit prêt
-    url = f"{WEBHOOK_URL}/webhook" if not WEBHOOK_URL.endswith("/webhook") else WEBHOOK_URL
-    r = requests.post(f"{BASE_URL}/setWebhook", json={
-        "url": url,
-        "allowed_updates": ["message", "chat_member"]
-    })
-    result = r.json()
-    logger.info(f"Webhook set: {result}")
+    try:
+        requests.post(f"{BASE_URL}/sendMessage", json={"chat_id": chat_id, "text": text}, timeout=10)
+    except Exception as e:
+        logger.error(f"send_message error: {e}")
 
 def handle_update(update):
+    logger.info(f"Update reçu: {json.dumps(update)[:200]}")
+    
     if "message" in update:
         message = update["message"]
         chat_id = message["chat"]["id"]
         text = message.get("text", "")
 
-        if text.startswith("/start"):
-            send_message(chat_id,
-                "👋 Bot tracking Clarisse actif!\n\n"
-                "/stats — Stats de tous les VAs\n"
-                "/reset — Remettre à 0"
-            )
-        elif text.startswith("/stats"):
+        if "/start" in text:
+            send_message(chat_id, "👋 Bot tracking Clarisse actif!\n\n/stats — Stats\n/reset — Remettre à 0")
+        elif "/stats" in text:
             lines = ["📊 Stats depuis activation:\n"]
             for link, info in stats.items():
-                lines.append(f"👤 {info['va']}: {info['total_joins']} nouveaux joins")
+                lines.append(f"👤 {info['va']}: {info['total_joins']} joins")
             send_message(chat_id, "\n".join(lines))
-        elif text.startswith("/reset"):
+        elif "/reset" in text:
             for link in stats:
                 stats[link]["total_joins"] = 0
-            send_message(chat_id, "✅ Compteurs remis à 0.")
+            send_message(chat_id, "✅ Remis à 0.")
 
     if "chat_member" in update:
         result = update["chat_member"]
@@ -70,22 +60,23 @@ def handle_update(update):
                 if link_url in stats:
                     stats[link_url]["total_joins"] += 1
                     va_name = stats[link_url]["va"]
-                    logger.info(f"✅ Nouveau join via {va_name} — total: {stats[link_url]['total_joins']}")
+                    logger.info(f"✅ Join via {va_name} — total: {stats[link_url]['total_joins']}")
 
-class WebhookHandler(BaseHTTPRequestHandler):
+class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        if self.path == "/webhook":
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length)
-            try:
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            logger.info(f"POST {self.path} body: {body[:200]}")
+            if self.path == "/webhook":
                 update = json.loads(body)
                 handle_update(update)
-            except Exception as e:
-                logger.error(f"Erreur: {e}")
             self.send_response(200)
             self.end_headers()
-        else:
-            self.send_response(404)
+            self.wfile.write(b"OK")
+        except Exception as e:
+            logger.error(f"POST error: {e}")
+            self.send_response(500)
             self.end_headers()
 
     def do_GET(self):
@@ -97,9 +88,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
         pass
 
 def main():
-    logger.info(f"Bot démarré sur port {PORT}...")
-    threading.Thread(target=set_webhook, daemon=True).start()
-    server = HTTPServer(("0.0.0.0", PORT), WebhookHandler)
+    logger.info(f"Démarrage sur port {PORT}...")
+    server = HTTPServer(("0.0.0.0", PORT), Handler)
+    logger.info("Serveur prêt.")
     server.serve_forever()
 
 if __name__ == "__main__":
