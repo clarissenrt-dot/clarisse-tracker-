@@ -12,11 +12,12 @@ TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 PORT = int(os.environ.get("PORT", 10000))
 
-VA_NAMES = {
-    "https://t.me/+8FkXVyTNSB9hZGI0": "Mamonj",
-    "https://t.me/+zS3jbHJep8I2ZjE0": "Snazzy",
-    "https://t.me/+OUI_fYmb091lOTk0": "Rock",
-    "https://t.me/+-7ocRNFOJPEzZDZk": "JohnAsso",
+# Matching par nom du lien d'invitation
+VA_LINK_NAMES = {
+    "Mamonj": "Mamonj",
+    "Snazzy Dude": "Snazzy",
+    "Rock": "Rock",
+    "John asso VA": "JohnAsso",
 }
 
 DATA_FILE = "/data/counts.json"
@@ -50,9 +51,9 @@ def send_message(chat_id, text):
 
 def get_stats_text():
     lines = ["📊 Stats joins par VA :\n"]
-    for link, name in VA_NAMES.items():
-        count = join_counts.get(name, 0)
-        lines.append(f"👤 {name} : {count} join(s)")
+    for va_name in ["Mamonj", "Snazzy", "Rock", "JohnAsso"]:
+        count = join_counts.get(va_name, 0)
+        lines.append(f"👤 {va_name} : {count} join(s)")
     lines.append(f"\nTotal : {sum(join_counts.values())}")
     return "\n".join(lines)
 
@@ -70,18 +71,18 @@ def handle_update(update):
     if "chat_join_request" in update:
         req = update["chat_join_request"]
         invite_link = req.get("invite_link", {})
-        link_url = invite_link.get("invite_link", "").strip() if invite_link else ""
+        link_name = invite_link.get("name", "").strip() if invite_link else ""
         user = req.get("from", {})
         username = user.get("username", "inconnu")
-        logger.info(f"LIEN COMPLET: '{link_url}'")
-        logger.info(f"MATCH: {link_url in VA_NAMES}")
-        if link_url in VA_NAMES:
-            va_name = VA_NAMES[link_url]
+        logger.info(f"chat_join_request — user: {username}, link_name: '{link_name}'")
+        logger.info(f"MATCH: {link_name in VA_LINK_NAMES}")
+        if link_name in VA_LINK_NAMES:
+            va_name = VA_LINK_NAMES[link_name]
             join_counts[va_name] += 1
             save_counts()
             logger.info(f"✅ Join comptabilisé pour {va_name} — total: {join_counts[va_name]}")
         else:
-            logger.warning(f"⚠️ Lien non reconnu: '{link_url}'")
+            logger.warning(f"⚠️ Nom de lien non reconnu: '{link_name}'")
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
