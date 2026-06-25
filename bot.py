@@ -18,14 +18,32 @@ VA_NAMES = {
     "https://t.me/+OUI_fYmb091lOTk0": "Rock",
     "https://t.me/+-7ocRNFOJPEzZDZk": "JohnAsso",
 }
-join_counts = defaultdict(int)
+
+DATA_FILE = "/data/counts.json"
+
+def load_counts():
+    try:
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r") as f:
+                return defaultdict(int, json.load(f))
+    except Exception as e:
+        logger.error(f"Erreur chargement counts: {e}")
+    return defaultdict(int)
+
+def save_counts():
+    try:
+        with open(DATA_FILE, "w") as f:
+            json.dump(dict(join_counts), f)
+    except Exception as e:
+        logger.error(f"Erreur sauvegarde counts: {e}")
+
+join_counts = load_counts()
 
 def send_message(chat_id, text):
     try:
-        logger.info(f"Envoi message à chat_id: {chat_id}")
         r = requests.post(f"{BASE_URL}/sendMessage",
             json={"chat_id": chat_id, "text": text}, timeout=10)
-        logger.info(f"Réponse sendMessage: {r.status_code} — {r.text[:200]}")
+        logger.info(f"sendMessage: {r.status_code}")
     except Exception as e:
         logger.error(f"send_message error: {e}")
 
@@ -40,30 +58,26 @@ def get_stats_text():
 def handle_update(update):
     logger.info(f"Update reçu: {str(update)[:300]}")
 
-    # Commandes
     if "message" in update:
         chat_id = update["message"]["chat"]["id"]
         text = update["message"].get("text", "")
-        logger.info(f"chat_id: {chat_id}, text: {text}")
         if "/stats" in text or "/start" in text:
             send_message(chat_id, get_stats_text())
         elif "/test" in text:
             send_message(chat_id, "✅ Bot actif!")
 
-    # Demande de rejoindre via lien (approbation manuelle)
     if "chat_join_request" in update:
         req = update["chat_join_request"]
         invite_link = req.get("invite_link", {})
         link_url = invite_link.get("invite_link", "") if invite_link else ""
         user = req.get("from", {})
         username = user.get("username", "inconnu")
-
         logger.info(f"chat_join_request — user: {username}, link: {link_url}")
-
         if link_url in VA_NAMES:
             va_name = VA_NAMES[link_url]
             join_counts[va_name] += 1
-            logger.info(f"✅ Join request comptabilisé pour {va_name} — total: {join_counts[va_name]}")
+            save_counts()
+            logger.info(f"✅ Join comptabilisé pour {va_name} — total: {join_counts[va_name]}")
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
