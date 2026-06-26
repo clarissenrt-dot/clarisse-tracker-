@@ -12,7 +12,6 @@ TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 PORT = int(os.environ.get("PORT", 10000))
 
-# Matching par nom du lien d'invitation
 VA_LINK_NAMES = {
     "Mamonj": "Mamonj",
     "Snazzy Dude": "Snazzy",
@@ -100,9 +99,17 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot running OK")
+        if self.path == "/counts":
+            # Route lecture seule — retourne les compteurs en JSON
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(dict(join_counts)).encode())
+        else:
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Bot running OK")
 
     def log_message(self, format, *args):
         pass
