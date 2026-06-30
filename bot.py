@@ -12,11 +12,12 @@ TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 PORT = int(os.environ.get("PORT", 10000))
 
+# Matching par nom du lien d'invitation
 VA_LINK_NAMES = {
-    "Mamonj": "Mamonj",
     "Snazzy Dude": "Snazzy",
-    "Rock": "Rock",
-    "John asso VA": "JohnAsso",
+    "Sediy": "Sediy",
+    "Minosoa": "Minosoa",
+    "PAO": "PAO",
 }
 
 DATA_FILE = "/data/counts.json"
@@ -50,7 +51,7 @@ def send_message(chat_id, text):
 
 def get_stats_text():
     lines = ["📊 Stats joins par VA :\n"]
-    for va_name in ["Mamonj", "Snazzy", "Rock", "JohnAsso"]:
+    for va_name in ["Snazzy", "Sediy", "Minosoa", "PAO"]:
         count = join_counts.get(va_name, 0)
         lines.append(f"👤 {va_name} : {count} join(s)")
     lines.append(f"\nTotal : {sum(join_counts.values())}")
@@ -100,7 +101,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/counts":
-            # Route lecture seule — retourne les compteurs en JSON
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
