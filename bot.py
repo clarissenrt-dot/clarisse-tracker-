@@ -12,9 +12,8 @@ TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 PORT = int(os.environ.get("PORT", 10000))
 
-# Matching par nom du lien d'invitation
 VA_LINK_NAMES = {
-    "Snazzy Dude": "Snazzy",
+    "Mamonj": "Mamonj",
     "Sediy": "Sediy",
     "Minosoa": "Minosoa",
     "PAO": "PAO",
@@ -51,7 +50,7 @@ def send_message(chat_id, text):
 
 def get_stats_text():
     lines = ["📊 Stats joins par VA :\n"]
-    for va_name in ["Snazzy", "Sediy", "Minosoa", "PAO"]:
+    for va_name in ["Mamonj", "Sediy", "Minosoa", "PAO"]:
         count = join_counts.get(va_name, 0)
         lines.append(f"👤 {va_name} : {count} join(s)")
     lines.append(f"\nTotal : {sum(join_counts.values())}")
@@ -75,7 +74,6 @@ def handle_update(update):
         user = req.get("from", {})
         username = user.get("username", "inconnu")
         logger.info(f"chat_join_request — user: {username}, link_name: '{link_name}'")
-        logger.info(f"MATCH: {link_name in VA_LINK_NAMES}")
         if link_name in VA_LINK_NAMES:
             va_name = VA_LINK_NAMES[link_name]
             join_counts[va_name] += 1
