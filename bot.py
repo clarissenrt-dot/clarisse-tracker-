@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
@@ -58,6 +59,12 @@ def get_stats_text():
     lines.append(f"\nTotal : {sum(join_counts.values())}")
     return "\n".join(lines)
 
+def normalize_name(name):
+    # Retire tous types d'espaces (normaux, insécables, etc.) et met en minuscule
+    return re.sub(r"\s+", " ", name).strip().lower()
+
+NORMALIZED_VA_LINK_NAMES = {normalize_name(k): v for k, v in VA_LINK_NAMES.items()}
+
 def handle_update(update):
     logger.info(f"Update reçu: {str(update)[:1000]}")
 
@@ -72,17 +79,19 @@ def handle_update(update):
     if "chat_join_request" in update:
         req = update["chat_join_request"]
         invite_link = req.get("invite_link", {})
-        link_name = invite_link.get("name", "").strip() if invite_link else ""
+        link_name_raw = invite_link.get("name", "") if invite_link else ""
+        link_name = link_name_raw.strip()
         user = req.get("from", {})
         username = user.get("username", "inconnu")
-        logger.info(f"chat_join_request — user: {username}, link_name: '{link_name}'")
-        if link_name in VA_LINK_NAMES:
-            va_name = VA_LINK_NAMES[link_name]
+        logger.info(f"chat_join_request — user: {username}, link_name: '{link_name}', repr: {repr(link_name_raw)}")
+        norm = normalize_name(link_name_raw)
+        if norm in NORMALIZED_VA_LINK_NAMES:
+            va_name = NORMALIZED_VA_LINK_NAMES[norm]
             join_counts[va_name] += 1
             save_counts()
             logger.info(f"✅ Join comptabilisé pour {va_name} — total: {join_counts[va_name]}")
         else:
-            logger.warning(f"⚠️ Nom de lien non reconnu: '{link_name}'")
+            logger.warning(f"⚠️ Nom de lien non reconnu: '{link_name}' — repr: {repr(link_name_raw)}")
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
