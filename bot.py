@@ -60,8 +60,9 @@ def get_stats_text():
     return "\n".join(lines)
 
 def normalize_name(name):
-    # Retire tous types d'espaces (normaux, insécables, etc.) et met en minuscule
-    return re.sub(r"\s+", " ", name).strip().lower()
+    # Supprime tout ce qui n'est pas lettre/chiffre/espace (emoji, caractères invisibles, etc.)
+    cleaned = re.sub(r"[^\w\s]", "", name, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", cleaned).strip().lower()
 
 NORMALIZED_VA_LINK_NAMES = {normalize_name(k): v for k, v in VA_LINK_NAMES.items()}
 
