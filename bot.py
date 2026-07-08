@@ -17,9 +17,7 @@ VA_LINK_NAMES = {
     "Mamonj": "Mamonj",
     "Sediy": "Sediy",
     "Minosoa": "Minosoa",
-    "PAO": "PAO",
-    "Cristel judio": "Cristel judio",
-    "Snazzy Dude": "Snazzy",
+    "Stephan": "Stephan",
     "Insta": "Insta",
 }
 
@@ -54,7 +52,7 @@ def send_message(chat_id, text):
 
 def get_stats_text():
     lines = ["📊 Stats joins par VA :\n"]
-    for va_name in ["Mamonj", "Sediy", "Minosoa", "PAO", "Cristel judio", "Snazzy", "Insta"]:
+    for va_name in ["Mamonj", "Sediy", "Minosoa", "Stephan", "Snazzy", "Insta"]:
         count = join_counts.get(va_name, 0)
         lines.append(f"👤 {va_name} : {count} join(s)")
     lines.append(f"\nTotal : {sum(join_counts.values())}")
