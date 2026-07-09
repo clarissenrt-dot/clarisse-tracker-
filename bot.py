@@ -22,6 +22,7 @@ VA_LINK_NAMES = {
     "Minosoa": "Minosoa",
     "Stephan": "Stephan",
     "Insta": "Insta",
+    "tiktok clarissenrt": "TikTok",
 }
 
 DATA_FILE = "/data/counts.json"
@@ -74,7 +75,7 @@ def send_message(chat_id, text):
 
 def get_stats_text():
     lines = ["📊 Stats joins par VA :\n"]
-    for va_name in ["Mamonj", "Sediy", "Minosoa", "Stephan", "Insta"]:
+    for va_name in ["Mamonj", "Sediy", "Minosoa", "Stephan", "Insta", "TikTok"]:
         count = join_counts.get(va_name, 0)
         lines.append(f"👤 {va_name} : {count} join(s)")
     lines.append(f"\nTotal : {sum(join_counts.values())}")
