@@ -3,6 +3,8 @@ import json
 import logging
 import re
 import requests
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
 
@@ -12,6 +14,7 @@ logger = logging.getLogger(__name__)
 TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 PORT = int(os.environ.get("PORT", 10000))
+PARIS_TZ = ZoneInfo("Europe/Paris")
 
 VA_LINK_NAMES = {
     "Mamonj": "Mamonj",
@@ -22,6 +25,7 @@ VA_LINK_NAMES = {
 }
 
 DATA_FILE = "/data/counts.json"
+DAILY_FILE = "/data/daily.json"
 
 def load_counts():
     try:
@@ -40,7 +44,25 @@ def save_counts():
     except Exception as e:
         logger.error(f"Erreur sauvegarde counts: {e}")
 
+def load_daily():
+    try:
+        if os.path.exists(DAILY_FILE):
+            with open(DAILY_FILE, "r") as f:
+                return defaultdict(int, json.load(f))
+    except Exception as e:
+        logger.error(f"Erreur chargement daily: {e}")
+    return defaultdict(int)
+
+def save_daily():
+    try:
+        with open(DAILY_FILE, "w") as f:
+            json.dump(dict(daily_counts), f)
+        logger.info(f"✅ Sauvegarde daily OK: {dict(daily_counts)}")
+    except Exception as e:
+        logger.error(f"Erreur sauvegarde daily: {e}")
+
 join_counts = load_counts()
+daily_counts = load_daily()
 
 def send_message(chat_id, text):
     try:
@@ -52,7 +74,7 @@ def send_message(chat_id, text):
 
 def get_stats_text():
     lines = ["📊 Stats joins par VA :\n"]
-    for va_name in ["Mamonj", "Sediy", "Minosoa", "Stephan", "Snazzy", "Insta"]:
+    for va_name in ["Mamonj", "Sediy", "Minosoa", "Stephan", "Insta"]:
         count = join_counts.get(va_name, 0)
         lines.append(f"👤 {va_name} : {count} join(s)")
     lines.append(f"\nTotal : {sum(join_counts.values())}")
@@ -89,7 +111,10 @@ def handle_update(update):
             va_name = NORMALIZED_VA_LINK_NAMES[norm]
             join_counts[va_name] += 1
             save_counts()
-            logger.info(f"✅ Join comptabilisé pour {va_name} — total: {join_counts[va_name]}")
+            today_str = datetime.now(PARIS_TZ).strftime("%Y-%m-%d")
+            daily_counts[today_str] += 1
+            save_daily()
+            logger.info(f"✅ Join comptabilisé pour {va_name} — total: {join_counts[va_name]} — jour {today_str}: {daily_counts[today_str]}")
         else:
             logger.warning(f"⚠️ Nom de lien non reconnu: '{link_name}' — repr: {repr(link_name_raw)}")
 
@@ -115,6 +140,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(dict(join_counts)).encode())
+        elif self.path == "/history":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(dict(daily_counts)).encode())
         else:
             self.send_response(200)
             self.end_headers()
