@@ -29,6 +29,23 @@ VA_LINK_NAMES = {
 
 DATA_FILE = "/data/counts.json"
 DAILY_FILE = "/data/daily.json"
+SEEN_FILE = "/data/seen_users.json"
+
+def load_seen():
+    try:
+        if os.path.exists(SEEN_FILE):
+            with open(SEEN_FILE, "r") as f:
+                return set(json.load(f))
+    except Exception as e:
+        logger.error(f"Erreur chargement seen_users: {e}")
+    return set()
+
+def save_seen():
+    try:
+        with open(SEEN_FILE, "w") as f:
+            json.dump(list(seen_users), f)
+    except Exception as e:
+        logger.error(f"Erreur sauvegarde seen_users: {e}")
 
 def load_counts():
     try:
@@ -66,6 +83,7 @@ def save_daily():
 
 join_counts = load_counts()
 daily_counts = load_daily()
+seen_users = load_seen()
 
 def send_message(chat_id, text):
     try:
@@ -107,11 +125,21 @@ def handle_update(update):
         link_name_raw = invite_link.get("name", "") if invite_link else ""
         link_name = link_name_raw.strip()
         user = req.get("from", {})
+        user_id = user.get("id")
+        chat_id_req = req.get("chat", {}).get("id")
         username = user.get("username", "inconnu")
         logger.info(f"chat_join_request — user: {username}, link_name: '{link_name}', repr: {repr(link_name_raw)}")
+
+        dedup_key = f"{chat_id_req}:{user_id}"
+        if dedup_key in seen_users:
+            logger.warning(f"⚠️ Doublon ignoré: {username} (id {user_id}) a déjà été comptabilisé, requête renvoyée par Telegram")
+            return
+
         norm = normalize_name(link_name_raw)
         if norm in NORMALIZED_VA_LINK_NAMES:
             va_name = NORMALIZED_VA_LINK_NAMES[norm]
+            seen_users.add(dedup_key)
+            save_seen()
             join_counts[va_name] += 1
             save_counts()
             today_str = datetime.now(PARIS_TZ).strftime("%Y-%m-%d")
