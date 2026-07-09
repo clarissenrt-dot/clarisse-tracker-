@@ -5,6 +5,7 @@ import re
 import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from urllib.parse import urlparse, parse_qs
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
 
@@ -15,6 +16,7 @@ TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 PORT = int(os.environ.get("PORT", 10000))
 PARIS_TZ = ZoneInfo("Europe/Paris")
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "clarisse2026key")
 
 VA_LINK_NAMES = {
     "Mamonj": "Mamonj",
@@ -135,18 +137,51 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_GET(self):
-        if self.path == "/counts":
+        parsed = urlparse(self.path)
+        path = parsed.path
+        params = parse_qs(parsed.query)
+
+        if path == "/counts":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(dict(join_counts)).encode())
-        elif self.path == "/history":
+        elif path == "/history":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(dict(daily_counts)).encode())
+        elif path == "/adjust":
+            key = params.get("key", [""])[0]
+            if key != ADMIN_KEY:
+                self.send_response(403)
+                self.end_headers()
+                self.wfile.write(b"Forbidden")
+                return
+            date_str = params.get("date", [""])[0]
+            va_name = params.get("va", [""])[0]
+            try:
+                amount = int(params.get("amount", ["0"])[0])
+            except ValueError:
+                amount = 0
+            if not date_str or amount == 0:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b"Usage: /adjust?date=YYYY-MM-DD&amount=14&va=TikTok&key=...")
+                return
+            daily_counts[date_str] += amount
+            save_daily()
+            if va_name:
+                join_counts[va_name] += amount
+                save_counts()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            result = {"date": date_str, "amount": amount, "va": va_name or None,
+                      "daily_total_that_day": daily_counts[date_str]}
+            self.wfile.write(json.dumps(result).encode())
         else:
             self.send_response(200)
             self.end_headers()
