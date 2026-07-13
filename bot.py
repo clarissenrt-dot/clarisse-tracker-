@@ -22,7 +22,7 @@ VA_LINK_NAMES = {
     "Mamonj": "Mamonj",
     "Sediy": "Sediy",
     "Minosoa": "Minosoa",
-    "Stephan": "Stephan",
+    "Stephane insta": "Stephan",
     "Insta": "Insta",
     "tiktok clarissenrt": "TikTok",
 }
