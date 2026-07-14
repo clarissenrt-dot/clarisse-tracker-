@@ -18,13 +18,13 @@ PORT = int(os.environ.get("PORT", 10000))
 PARIS_TZ = ZoneInfo("Europe/Paris")
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "clarisse2026key")
 
-VA_LINK_NAMES = {
-    "Mamonj": "Mamonj",
-    "Sediy": "Sediy",
-    "Minosoa": "Minosoa",
-    "Stephane insta": "Stephan",
-    "Insta": "Insta",
-    "tiktok clarissenrt": "TikTok",
+VA_KEYWORDS = {
+    "Mamonj": ["mamonj"],
+    "Sediy": ["sediy"],
+    "Minosoa": ["minosoa"],
+    "Stephan": ["stephan", "stephane"],
+    "Insta": ["insta"],
+    "TikTok": ["tiktok"],
 }
 
 DATA_FILE = "/data/counts.json"
@@ -106,7 +106,12 @@ def normalize_name(name):
     cleaned = re.sub(r"[^\w\s]", "", name, flags=re.UNICODE)
     return re.sub(r"\s+", " ", cleaned).strip().lower()
 
-NORMALIZED_VA_LINK_NAMES = {normalize_name(k): v for k, v in VA_LINK_NAMES.items()}
+def match_va(norm_name):
+    for va_name, keywords in VA_KEYWORDS.items():
+        for kw in keywords:
+            if kw in norm_name:
+                return va_name
+    return None
 
 def handle_update(update):
     logger.info(f"Update reçu: {str(update)[:1000]}")
@@ -136,8 +141,8 @@ def handle_update(update):
             return
 
         norm = normalize_name(link_name_raw)
-        if norm in NORMALIZED_VA_LINK_NAMES:
-            va_name = NORMALIZED_VA_LINK_NAMES[norm]
+        va_name = match_va(norm)
+        if va_name:
             seen_users.add(dedup_key)
             save_seen()
             join_counts[va_name] += 1
