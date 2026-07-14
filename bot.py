@@ -25,6 +25,7 @@ VA_KEYWORDS = {
     "Stephan": ["stephan", "stephane"],
     "Insta": ["insta"],
     "TikTok": ["tiktok"],
+    "Robert": ["robert"],
 }
 
 DATA_FILE = "/data/counts.json"
