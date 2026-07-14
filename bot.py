@@ -23,7 +23,7 @@ VA_KEYWORDS = {
     "Sediy": ["sediy"],
     "Minosoa": ["minosoa"],
     "Stephan": ["stephan", "stephane"],
-    "Insta": ["insta"],
+    "Insta": ["insta""facebook"],
     "TikTok": ["tiktok"],
     "Robert": ["robert"],
 }
