@@ -26,6 +26,7 @@ VA_KEYWORDS = {
     "TikTok": ["tiktok"],
     "Robert": ["robert"],
     "Wisdom": ["wisdom"],
+    "Andy": ["andy"],
 }
 
 DATA_FILE = "/data/counts.json"
@@ -66,9 +67,6 @@ def save_counts():
         logger.error(f"Erreur sauvegarde counts: {e}")
 
 def load_daily():
-    # Format : { "2026-07-17": { "Mamonj": 3, "Insta": 1, ... } }
-    # Migration douce : si une ancienne date a juste un nombre (ancien format), on la garde
-    # telle quelle dans une cle speciale "_total" pour ne rien perdre, mais sans repartition par VA.
     try:
         if os.path.exists(DAILY_FILE):
             with open(DAILY_FILE, "r") as f:
@@ -107,7 +105,7 @@ def send_message(chat_id, text):
 
 def get_stats_text():
     lines = ["📊 Stats joins par VA :\n"]
-    for va_name in ["Mamonj", "Sediy", "Minosoa", "Insta", "TikTok", "Robert", "Wisdom"]:
+    for va_name in ["Mamonj", "Sediy", "Minosoa", "Insta", "TikTok", "Robert", "Wisdom", "Andy"]:
         count = join_counts.get(va_name, 0)
         lines.append(f"👤 {va_name} : {count} join(s)")
     lines.append(f"\nTotal : {sum(join_counts.values())}")
