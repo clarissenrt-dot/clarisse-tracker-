@@ -22,7 +22,6 @@ VA_KEYWORDS = {
     "Mamonj": ["mamonj"],
     "Sediy": ["sediy"],
     "Minosoa": ["minosoa"],
-    "Stephan": ["stephan", "stephane"],
     "Insta": ["insta", "facebook"],
     "TikTok": ["tiktok"],
     "Robert": ["robert"],
@@ -67,19 +66,30 @@ def save_counts():
         logger.error(f"Erreur sauvegarde counts: {e}")
 
 def load_daily():
+    # Format : { "2026-07-17": { "Mamonj": 3, "Insta": 1, ... } }
+    # Migration douce : si une ancienne date a juste un nombre (ancien format), on la garde
+    # telle quelle dans une cle speciale "_total" pour ne rien perdre, mais sans repartition par VA.
     try:
         if os.path.exists(DAILY_FILE):
             with open(DAILY_FILE, "r") as f:
-                return defaultdict(int, json.load(f))
+                raw = json.load(f)
+                result = {}
+                for date_str, val in raw.items():
+                    if isinstance(val, dict):
+                        result[date_str] = defaultdict(int, val)
+                    else:
+                        result[date_str] = defaultdict(int, {"_total": val})
+                return result
     except Exception as e:
         logger.error(f"Erreur chargement daily: {e}")
-    return defaultdict(int)
+    return {}
 
 def save_daily():
     try:
+        serializable = {date: dict(vas) for date, vas in daily_counts.items()}
         with open(DAILY_FILE, "w") as f:
-            json.dump(dict(daily_counts), f)
-        logger.info(f"✅ Sauvegarde daily OK: {dict(daily_counts)}")
+            json.dump(serializable, f)
+        logger.info(f"✅ Sauvegarde daily OK: {serializable}")
     except Exception as e:
         logger.error(f"Erreur sauvegarde daily: {e}")
 
@@ -97,14 +107,13 @@ def send_message(chat_id, text):
 
 def get_stats_text():
     lines = ["📊 Stats joins par VA :\n"]
-    for va_name in ["Mamonj", "Sediy", "Minosoa", "Stephan", "Insta", "TikTok", "Robert", "Wisdom"]:
+    for va_name in ["Mamonj", "Sediy", "Minosoa", "Insta", "TikTok", "Robert", "Wisdom"]:
         count = join_counts.get(va_name, 0)
         lines.append(f"👤 {va_name} : {count} join(s)")
     lines.append(f"\nTotal : {sum(join_counts.values())}")
     return "\n".join(lines)
 
 def normalize_name(name):
-    # Supprime tout ce qui n'est pas lettre/chiffre/espace (emoji, caractères invisibles, etc.)
     cleaned = re.sub(r"[^\w\s]", "", name, flags=re.UNICODE)
     return re.sub(r"\s+", " ", cleaned).strip().lower()
 
@@ -150,9 +159,11 @@ def handle_update(update):
             join_counts[va_name] += 1
             save_counts()
             today_str = datetime.now(PARIS_TZ).strftime("%Y-%m-%d")
-            daily_counts[today_str] += 1
+            if today_str not in daily_counts:
+                daily_counts[today_str] = defaultdict(int)
+            daily_counts[today_str][va_name] += 1
             save_daily()
-            logger.info(f"✅ Join comptabilisé pour {va_name} — total: {join_counts[va_name]} — jour {today_str}: {daily_counts[today_str]}")
+            logger.info(f"✅ Join comptabilisé pour {va_name} — total: {join_counts[va_name]} — jour {today_str}: {dict(daily_counts[today_str])}")
         else:
             logger.warning(f"⚠️ Nom de lien non reconnu: '{link_name}' — repr: {repr(link_name_raw)}")
 
@@ -187,7 +198,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(json.dumps(dict(daily_counts)).encode())
+            serializable = {date: dict(vas) for date, vas in daily_counts.items()}
+            self.wfile.write(json.dumps(serializable).encode())
         elif path == "/adjust":
             key = params.get("key", [""])[0]
             if key != ADMIN_KEY:
@@ -206,16 +218,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b"Usage: /adjust?date=YYYY-MM-DD&amount=14&va=TikTok&key=...")
                 return
-            daily_counts[date_str] += amount
-            save_daily()
+            if date_str not in daily_counts:
+                daily_counts[date_str] = defaultdict(int)
             if va_name:
+                daily_counts[date_str][va_name] += amount
                 join_counts[va_name] += amount
                 save_counts()
+            else:
+                daily_counts[date_str]["_total"] += amount
+            save_daily()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             result = {"date": date_str, "amount": amount, "va": va_name or None,
-                      "daily_total_that_day": daily_counts[date_str]}
+                      "daily_total_that_day": sum(daily_counts[date_str].values())}
             self.wfile.write(json.dumps(result).encode())
         else:
             self.send_response(200)
