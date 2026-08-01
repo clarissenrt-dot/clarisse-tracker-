@@ -22,16 +22,21 @@ VA_KEYWORDS = {
     "Mamonj": ["mamonj"],
     "Sediy": ["sediy"],
     "Minosoa": ["minosoa"],
-    "Insta": ["insta", "facebook"],
     "TikTok": ["tiktok"],
     "Robert": ["robert"],
     "Wisdom": ["wisdom"],
     "Andy": ["andy"],
 }
 
+PLATFORM_KEYWORDS = {
+    "Instagram": ["instagram", "insta"],
+    "Facebook": ["facebook"],
+}
+
 DATA_FILE = "/data/counts.json"
 DAILY_FILE = "/data/daily.json"
 SEEN_FILE = "/data/seen_users.json"
+PLATFORM_LANG_FILE = "/data/platform_lang.json"
 
 def load_seen():
     try:
@@ -91,9 +96,35 @@ def save_daily():
     except Exception as e:
         logger.error(f"Erreur sauvegarde daily: {e}")
 
+def load_platform_lang():
+    try:
+        if os.path.exists(PLATFORM_LANG_FILE):
+            with open(PLATFORM_LANG_FILE, "r") as f:
+                raw = json.load(f)
+                result = {}
+                for date_str, platforms in raw.items():
+                    result[date_str] = {p: defaultdict(int, langs) for p, langs in platforms.items()}
+                return result
+    except Exception as e:
+        logger.error(f"Erreur chargement platform_lang: {e}")
+    return {}
+
+def save_platform_lang():
+    try:
+        serializable = {
+            date: {p: dict(langs) for p, langs in platforms.items()}
+            for date, platforms in platform_lang_counts.items()
+        }
+        with open(PLATFORM_LANG_FILE, "w") as f:
+            json.dump(serializable, f)
+        logger.info(f"✅ Sauvegarde platform_lang OK: {serializable}")
+    except Exception as e:
+        logger.error(f"Erreur sauvegarde platform_lang: {e}")
+
 join_counts = load_counts()
 daily_counts = load_daily()
 seen_users = load_seen()
+platform_lang_counts = load_platform_lang()
 
 def send_message(chat_id, text):
     try:
@@ -105,7 +136,7 @@ def send_message(chat_id, text):
 
 def get_stats_text():
     lines = ["📊 Stats joins par VA :\n"]
-    for va_name in ["Mamonj", "Sediy", "Minosoa", "Insta", "TikTok", "Robert", "Wisdom", "Andy"]:
+    for va_name in ["Mamonj", "Sediy", "Minosoa", "TikTok", "Robert", "Wisdom", "Andy"]:
         count = join_counts.get(va_name, 0)
         lines.append(f"👤 {va_name} : {count} join(s)")
     lines.append(f"\nTotal : {sum(join_counts.values())}")
@@ -120,6 +151,13 @@ def match_va(norm_name):
         for kw in keywords:
             if kw in norm_name:
                 return va_name
+    return None
+
+def match_platform(norm_name):
+    for platform, keywords in PLATFORM_KEYWORDS.items():
+        for kw in keywords:
+            if kw in norm_name:
+                return platform
     return None
 
 def handle_update(update):
@@ -142,7 +180,8 @@ def handle_update(update):
         user_id = user.get("id")
         chat_id_req = req.get("chat", {}).get("id")
         username = user.get("username", "inconnu")
-        logger.info(f"chat_join_request — user: {username}, link_name: '{link_name}', repr: {repr(link_name_raw)}")
+        language_code = user.get("language_code") or "unknown"
+        logger.info(f"chat_join_request — user: {username}, lang: {language_code}, link_name: '{link_name}', repr: {repr(link_name_raw)}")
 
         dedup_key = f"{chat_id_req}:{user_id}"
         if dedup_key in seen_users:
@@ -151,19 +190,33 @@ def handle_update(update):
 
         norm = normalize_name(link_name_raw)
         va_name = match_va(norm)
+        platform = match_platform(norm)
+
+        if not va_name and not platform:
+            logger.warning(f"⚠️ Nom de lien non reconnu: '{link_name}' — repr: {repr(link_name_raw)}")
+            return
+
+        seen_users.add(dedup_key)
+        save_seen()
+        today_str = datetime.now(PARIS_TZ).strftime("%Y-%m-%d")
+
         if va_name:
-            seen_users.add(dedup_key)
-            save_seen()
             join_counts[va_name] += 1
             save_counts()
-            today_str = datetime.now(PARIS_TZ).strftime("%Y-%m-%d")
             if today_str not in daily_counts:
                 daily_counts[today_str] = defaultdict(int)
             daily_counts[today_str][va_name] += 1
             save_daily()
-            logger.info(f"✅ Join comptabilisé pour {va_name} — total: {join_counts[va_name]} — jour {today_str}: {dict(daily_counts[today_str])}")
-        else:
-            logger.warning(f"⚠️ Nom de lien non reconnu: '{link_name}' — repr: {repr(link_name_raw)}")
+
+        if platform:
+            if today_str not in platform_lang_counts:
+                platform_lang_counts[today_str] = {}
+            if platform not in platform_lang_counts[today_str]:
+                platform_lang_counts[today_str][platform] = defaultdict(int)
+            platform_lang_counts[today_str][platform][language_code] += 1
+            save_platform_lang()
+
+        logger.info(f"✅ Join comptabilisé — va: {va_name or 'n/a'}, platform: {platform or 'n/a'}, lang: {language_code} — jour {today_str}")
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -198,6 +251,15 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             serializable = {date: dict(vas) for date, vas in daily_counts.items()}
             self.wfile.write(json.dumps(serializable).encode())
+        elif path == "/platform-lang":
+            date_str = params.get("date", [""])[0] or datetime.now(PARIS_TZ).strftime("%Y-%m-%d")
+            day_data = platform_lang_counts.get(date_str, {})
+            serializable = {p: dict(langs) for p, langs in day_data.items()}
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"date": date_str, "data": serializable}).encode())
         elif path == "/adjust":
             key = params.get("key", [""])[0]
             if key != ADMIN_KEY:
