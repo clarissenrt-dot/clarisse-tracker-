@@ -31,6 +31,7 @@ VA_KEYWORDS = {
 PLATFORM_KEYWORDS = {
     "Instagram": ["instagram", "insta"],
     "Facebook": ["facebook"],
+    "TikTok": ["tiktok"],
 }
 
 DATA_FILE = "/data/counts.json"
