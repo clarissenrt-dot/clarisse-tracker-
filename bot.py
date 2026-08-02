@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 from urllib.parse import urlparse, parse_qs
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
+from nacl.signing import VerifyKey
+from nacl.exceptions import BadSignatureError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,6 +19,17 @@ BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 PORT = int(os.environ.get("PORT", 10000))
 PARIS_TZ = ZoneInfo("Europe/Paris")
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "clarisse2026key")
+
+DISCORD_PUBLIC_KEY = os.environ.get("DISCORD_PUBLIC_KEY", "")
+_discord_verify_key = VerifyKey(bytes.fromhex(DISCORD_PUBLIC_KEY)) if DISCORD_PUBLIC_KEY else None
+
+DASH_PLATFORM_EMOJI = {"Instagram": "\U0001F4F8", "Facebook": "\U0001F535", "TikTok": "\U0001F3B5"}
+DASH_LANG_FLAG = {
+    "en": "\U0001F1EC\U0001F1E7", "es": "\U0001F1EA\U0001F1F8", "fr": "\U0001F1EB\U0001F1F7",
+    "pt": "\U0001F1E7\U0001F1F7", "tr": "\U0001F1F9\U0001F1F7", "it": "\U0001F1EE\U0001F1F9",
+    "de": "\U0001F1E9\U0001F1EA", "ar": "\U0001F1F8\U0001F1E6", "ru": "\U0001F1F7\U0001F1FA",
+    "pl": "\U0001F1F5\U0001F1F1", "nl": "\U0001F1F3\U0001F1F1", "unknown": "❓",
+}
 
 VA_KEYWORDS = {
     "Mamonj": ["mamonj"],
@@ -161,6 +174,54 @@ def match_platform(norm_name):
                 return platform
     return None
 
+def base_lang(code):
+    return (code or "unknown").split("-")[0].lower()
+
+def build_dash_message():
+    today_str = datetime.now(PARIS_TZ).strftime("%Y-%m-%d")
+    day_label = datetime.now(PARIS_TZ).strftime("%d/%m/%Y")
+    raw = platform_lang_counts.get(today_str, {})
+
+    grand_total = sum(sum(langs.values()) for langs in raw.values())
+    lines = [f"\U0001F4CA **Subs Instagram/Facebook/TikTok du {day_label} : {grand_total} nouveaux abonnes**", ""]
+
+    for platform in ["Instagram", "Facebook", "TikTok"]:
+        raw_langs = raw.get(platform, {})
+        lang_counts = {}
+        for code, count in raw_langs.items():
+            lang = base_lang(code)
+            lang_counts[lang] = lang_counts.get(lang, 0) + count
+
+        platform_total = sum(lang_counts.values())
+        if platform_total == 0:
+            continue
+        pct = 100 * platform_total / grand_total if grand_total else 0
+        emoji = DASH_PLATFORM_EMOJI.get(platform, "")
+        lines.append(f"{emoji} **{platform} : {platform_total} subs ({pct:.1f}%)**")
+        for lang, count in sorted(lang_counts.items(), key=lambda kv: -kv[1]):
+            lang_pct = 100 * count / platform_total if platform_total else 0
+            flag = DASH_LANG_FLAG.get(lang, DASH_LANG_FLAG["unknown"])
+            lines.append(f"{flag} {lang} : {count} ({lang_pct:.1f}%)")
+        lines.append("")
+
+    if grand_total == 0:
+        lines.append("_Aucun sub enregistre aujourd'hui pour l'instant._")
+
+    return "\n".join(lines).strip()
+
+def verify_discord_signature(headers, body):
+    if not _discord_verify_key:
+        return False
+    signature = headers.get("X-Signature-Ed25519")
+    timestamp = headers.get("X-Signature-Timestamp")
+    if not signature or not timestamp:
+        return False
+    try:
+        _discord_verify_key.verify(timestamp.encode() + body, bytes.fromhex(signature))
+        return True
+    except (BadSignatureError, ValueError):
+        return False
+
 def handle_update(update):
     logger.info(f"Update reçu: {str(update)[:1000]}")
 
@@ -220,10 +281,42 @@ def handle_update(update):
         logger.info(f"✅ Join comptabilisé — va: {va_name or 'n/a'}, platform: {platform or 'n/a'}, lang: {language_code} — jour {today_str}")
 
 class Handler(BaseHTTPRequestHandler):
+    def _send_json(self, status, obj):
+        payload = json.dumps(obj).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def handle_discord_interaction(self, body):
+        if not verify_discord_signature(self.headers, body):
+            self.send_response(401)
+            self.end_headers()
+            self.wfile.write(b"invalid request signature")
+            return
+
+        payload = json.loads(body)
+        interaction_type = payload.get("type")
+
+        if interaction_type == 1:
+            self._send_json(200, {"type": 1})
+            return
+
+        if interaction_type == 2 and payload.get("data", {}).get("name") == "dash":
+            self._send_json(200, {"type": 4, "data": {"content": build_dash_message()}})
+            return
+
+        self._send_json(200, {"type": 4, "data": {"content": "Commande inconnue."}})
+
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
+
+            if self.path.startswith("/discord-interactions"):
+                self.handle_discord_interaction(body)
+                return
+
             update = json.loads(body)
             handle_update(update)
             self.send_response(200)
